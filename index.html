@@ -696,11 +696,14 @@ async function submitToSupabase(name, examNum, major, phone, materials) {
 
   // 2. 上传文件到 Storage
   for (const mat of materials) {
-    const filePath = `${submissionId}/${mat.fileName}`;
+    // 生成存储路径（避免中文，用时间戳+序号保证唯一）
+    const safeExt = (mat.file.name.match(/\.([a-zA-Z0-9]+)$/) || [,'bin'])[1];
+    const safePath = `${submissionId}/file_${Date.now()}_${Math.floor(Math.random()*10000)}.${safeExt}`;
+    
     const { error: uploadError } = await supabaseClient
       .storage
       .from('fushi-materials')
-      .upload(filePath, mat.file);
+      .upload(safePath, mat.file, { contentType: mat.file.type || 'application/octet-stream' });
 
     if (uploadError) throw new Error('文件上传失败: ' + uploadError.message);
 
@@ -708,9 +711,9 @@ async function submitToSupabase(name, examNum, major, phone, materials) {
     const { data: urlData } = supabaseClient
       .storage
       .from('fushi-materials')
-      .getPublicUrl(filePath);
+      .getPublicUrl(safePath);
 
-    // 3. 保存材料记录
+    // 3. 保存材料记录（file_name 保存原始中文名用于显示，file_path 保存实际存储路径）
     const { error: matError } = await supabaseClient
       .from('materials')
       .insert([{
@@ -718,7 +721,7 @@ async function submitToSupabase(name, examNum, major, phone, materials) {
         material_type: mat.materialType,
         file_name: mat.fileName,
         file_url: urlData.publicUrl,
-        file_path: filePath,
+        file_path: safePath,
         file_size: mat.file.size
       }]);
 
