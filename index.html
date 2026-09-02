@@ -155,8 +155,9 @@ tr:hover td { background:#f8fafc; }
   <div class="card">
     <!-- 学生信息表单 -->
     <div class="form-group">
-      <label class="required">姓名</label>
-      <input type="text" id="stu-name" placeholder="请输入真实姓名" maxlength="20">
+      <label class="required">本科专业 + 姓名</label>
+      <input type="text" id="stu-name" placeholder="如：计算机科学与技术-张三（用 - 或空格分隔）" maxlength="60">
+      <p style="font-size:12px; color:var(--text-muted); margin-top:4px;">请同时填写本科专业和姓名，格式：专业-姓名（如 计算机科学与技术-张三）</p>
     </div>
     <div class="form-group">
       <label class="required">准考证号 / 考号</label>
@@ -274,8 +275,9 @@ tr:hover td { background:#f8fafc; }
           <thead>
             <tr>
               <th>姓名</th>
+              <th>本科专业</th>
               <th>考号</th>
-              <th>专业</th>
+              <th>报考专业</th>
               <th>手机</th>
               <th>材料数</th>
               <th>状态</th>
@@ -614,26 +616,45 @@ function handleFileSelect(files, fileDisplay, fileInput) {
   });
 }
 
-// 统一文件命名
-function generateFileName(studentName, examNum, materialType, originalName) {
+// 统一文件命名（专业_姓名_材料类型）
+function generateFileName(studentName, major, materialType, originalName) {
   const ext = originalName.substring(originalName.lastIndexOf('.')) || '';
   // 清理特殊字符
   const cleanName = studentName.replace(/[/\\?%*:|"<>]/g, '');
-  const cleanExamNum = examNum.replace(/[/\\?%*:|"<>]/g, '');
+  const cleanMajor = major.replace(/[/\\?%*:|"<>]/g, '');
   const cleanType = materialType.replace(/[/\\?%*:|"<>]/g, '');
-  return `${cleanName}_${cleanExamNum}_${cleanType}${ext}`;
+  return `${cleanMajor}_${cleanName}_${cleanType}${ext}`;
 }
 
 // 提交
 async function submitAll() {
-  const name = document.getElementById('stu-name').value.trim();
+  const nameInput = document.getElementById('stu-name').value.trim();
   const examNum = document.getElementById('stu-examnum').value.trim();
   const major = document.getElementById('stu-major').value.trim();
   const phone = document.getElementById('stu-phone').value.trim();
 
-  if (!name) { showToast('请填写姓名', 'error'); return; }
+  if (!nameInput) { showToast('请填写本科专业和姓名', 'error'); return; }
   if (!examNum) { showToast('请填写考号', 'error'); return; }
   if (!major) { showToast('请填写报考专业', 'error'); return; }
+
+  // 解析“专业-姓名”或“专业 姓名”
+  let undergradMajor = '';
+  let name = '';
+  if (nameInput.includes('-')) {
+    const parts = nameInput.split('-');
+    undergradMajor = parts[0].trim();
+    name = parts.slice(1).join('-').trim();
+  } else if (nameInput.includes(' ')) {
+    const parts = nameInput.split(/\s+/);
+    undergradMajor = parts[0].trim();
+    name = parts.slice(1).join(' ').trim();
+  } else {
+    undergradMajor = '';
+    name = nameInput;
+  }
+
+  if (!name) { showToast('请填写姓名（格式：专业-姓名）', 'error'); return; }
+  if (!undergradMajor) { showToast('请填写本科专业（格式：专业-姓名）', 'error'); return; }
 
   // 收集所有材料
   const rows = document.querySelectorAll('#material-list .material-row');
@@ -655,7 +676,7 @@ async function submitAll() {
       materials.push({
         materialType,
         file,
-        fileName: generateFileName(name, examNum, materialType, file.name)
+        fileName: generateFileName(name, major, materialType, file.name)
       });
     });
   });
@@ -668,9 +689,9 @@ async function submitAll() {
 
   try {
     if (supabaseClient) {
-      await submitToSupabase(name, examNum, major, phone, materials);
+      await submitToSupabase(name, undergradMajor, examNum, major, phone, materials);
     } else {
-      await submitToLocal(name, examNum, major, phone, materials);
+      await submitToLocal(name, undergradMajor, examNum, major, phone, materials);
     }
 
     showToast('提交成功！材料已上传', 'success');
@@ -684,11 +705,11 @@ async function submitAll() {
   }
 }
 
-async function submitToSupabase(name, examNum, major, phone, materials) {
+async function submitToSupabase(name, undergradMajor, examNum, major, phone, materials) {
   // 1. 创建提交记录
   const { data: subData, error: subError } = await supabaseClient
     .from('submissions')
-    .insert([{ student_name: name, exam_number: examNum, major, phone, status: 'pending' }])
+    .insert([{ student_name: name, undergrad_major: undergradMajor, exam_number: examNum, major, phone, status: 'pending' }])
     .select();
 
   if (subError) throw new Error('创建提交记录失败: ' + subError.message);
@@ -729,11 +750,12 @@ async function submitToSupabase(name, examNum, major, phone, materials) {
   }
 }
 
-async function submitToLocal(name, examNum, major, phone, materials) {
+async function submitToLocal(name, undergradMajor, examNum, major, phone, materials) {
   // 本地模式：存文件引用信息（无法真正存储文件）
   const submission = {
     id: 'local_' + Date.now(),
     student_name: name,
+    undergrad_major: undergradMajor,
     exam_number: examNum,
     major,
     phone,
@@ -864,6 +886,7 @@ function renderTable() {
 
     tr.innerHTML = `
       <td>${s.student_name}</td>
+      <td>${s.undergrad_major || '-'}</td>
       <td>${s.exam_number}</td>
       <td>${s.major || '-'}</td>
       <td>${s.phone || '-'}</td>
@@ -934,8 +957,9 @@ function showDetail(id) {
   document.getElementById('detail-content').innerHTML = `
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
       <div><label style="font-size:12px;color:var(--text-muted);">姓名</label><div style="font-weight:600;">${sub.student_name}</div></div>
+      <div><label style="font-size:12px;color:var(--text-muted);">本科专业</label><div style="font-weight:600;">${sub.undergrad_major || '-'}</div></div>
       <div><label style="font-size:12px;color:var(--text-muted);">考号</label><div style="font-weight:600;">${sub.exam_number}</div></div>
-      <div><label style="font-size:12px;color:var(--text-muted);">专业</label><div style="font-weight:600;">${sub.major || '-'}</div></div>
+      <div><label style="font-size:12px;color:var(--text-muted);">报考专业</label><div style="font-weight:600;">${sub.major || '-'}</div></div>
       <div><label style="font-size:12px;color:var(--text-muted);">手机</label><div style="font-weight:600;">${sub.phone || '-'}</div></div>
       <div><label style="font-size:12px;color:var(--text-muted);">状态</label><div>${getStatusBadge(sub.status)}</div></div>
       <div><label style="font-size:12px;color:var(--text-muted);">提交时间</label><div style="font-size:13px;">${new Date(sub.created_at).toLocaleString('zh-CN')}</div></div>
@@ -1131,17 +1155,17 @@ function copyStudentUrl() {
 function exportCSV() {
   if (localData.length === 0) { showToast('暂无数据可导出', 'error'); return; }
 
-  let csv = '\uFEFF姓名,考号,专业,手机,材料类型,文件名,状态,提交时间\n';
+  let csv = '\uFEFF姓名,本科专业,考号,报考专业,手机,材料类型,文件名,状态,提交时间\n';
   localData.forEach(s => {
     const materials = s.materials || [];
     const statusMap = { pending: '待审核', approved: '已通过', rejected: '已退回' };
     const time = new Date(s.created_at).toLocaleString('zh-CN');
 
     if (materials.length === 0) {
-      csv += `${s.student_name},${s.exam_number},${s.major || ''},${s.phone || ''},,,${statusMap[s.status] || s.status},${time}\n`;
+      csv += `${s.student_name},${s.undergrad_major || ''},${s.exam_number},${s.major || ''},${s.phone || ''},,,${statusMap[s.status] || s.status},${time}\n`;
     } else {
       materials.forEach(m => {
-        csv += `${s.student_name},${s.exam_number},${s.major || ''},${s.phone || ''},${m.material_type},${m.file_name || ''},${statusMap[s.status] || s.status},${time}\n`;
+        csv += `${s.student_name},${s.undergrad_major || ''},${s.exam_number},${s.major || ''},${s.phone || ''},${m.material_type},${m.file_name || ''},${statusMap[s.status] || s.status},${time}\n`;
       });
     }
   });
