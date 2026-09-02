@@ -1,0 +1,1182 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>考研复试材料收集系统</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --primary: #2563eb;
+  --primary-dark: #1d4ed8;
+  --bg: #f0f4f8;
+  --card: #ffffff;
+  --text: #1e293b;
+  --text-muted: #64748b;
+  --border: #e2e8f0;
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --radius: 12px;
+}
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* === 通用组件 === */
+.btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:10px 20px; border:none; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; transition:all .2s; text-decoration:none; }
+.btn-primary { background: var(--primary); color: #fff; }
+.btn-primary:hover { background: var(--primary-dark); }
+.btn-outline { background: transparent; color: var(--primary); border: 1.5px solid var(--primary); }
+.btn-outline:hover { background: var(--primary); color: #fff; }
+.btn-sm { padding: 6px 14px; font-size: 13px; }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:hover { opacity: .9; }
+
+.card { background: var(--card); border-radius: var(--radius); box-shadow: 0 1px 3px rgba(0,0,0,.06); padding: 20px; }
+
+input, select, textarea { width:100%; padding:10px 14px; border:1.5px solid var(--border); border-radius:8px; font-size:14px; font-family:inherit; transition:border-color .2s; background:#fff; }
+input:focus, select:focus, textarea:focus { outline:none; border-color: var(--primary); }
+label { display:block; font-size:14px; font-weight:600; margin-bottom:6px; color: var(--text); }
+.form-group { margin-bottom: 16px; }
+.required::after { content:" *"; color: var(--danger); }
+
+.badge { display:inline-block; padding:3px 10px; border-radius:20px; font-size:12px; font-weight:600; }
+.badge-success { background:#dcfce7; color: #166534; }
+.badge-pending { background:#fef3c7; color: #92400e; }
+.badge-danger { background:#fee2e2; color: #991b1b; }
+
+/* === 导航栏 === */
+.navbar { background: var(--card); border-bottom: 1px solid var(--border); padding: 12px 20px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; box-shadow:0 1px 2px rgba(0,0,0,.04); }
+.navbar h1 { font-size:18px; font-weight:700; color: var(--primary); }
+.navbar .nav-tabs { display:flex; gap:4px; }
+.nav-tab { padding:8px 16px; border-radius:8px; cursor:pointer; font-size:14px; font-weight:600; color: var(--text-muted); transition:all .2s; border:none; background:none; }
+.nav-tab.active { background: var(--primary); color:#fff; }
+.nav-tab:hover:not(.active) { background: var(--bg); }
+
+/* === 页面容器 === */
+.page { display:none; max-width: 900px; margin: 20px auto; padding: 0 16px; }
+.page.active { display:block; }
+
+/* === 学生端 === */
+.student-hero { text-align:center; padding: 30px 20px; }
+.student-hero h2 { font-size:22px; margin-bottom:8px; }
+.student-hero p { color: var(--text-muted); font-size:14px; }
+.upload-area { border: 2px dashed var(--border); border-radius: var(--radius); padding: 30px; text-align:center; cursor:pointer; transition: all .2s; }
+.upload-area:hover { border-color: var(--primary); background: #eff6ff; }
+.upload-area.dragover { border-color: var(--primary); background:#dbeafe; }
+.file-list { margin-top: 12px; }
+.file-item { display:flex; align-items:center; justify-content:space-between; padding:8px 12px; background:#f8fafc; border-radius:8px; margin-bottom:6px; font-size:13px; }
+.file-item .file-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.file-item .file-remove { color: var(--danger); cursor:pointer; margin-left:8px; }
+.material-row { display:flex; align-items:flex-start; gap:12px; margin-bottom:16px; }
+.material-row select { max-width: 180px; }
+
+/* === 管理端 === */
+.admin-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px; }
+.stats-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap:12px; margin-bottom:20px; }
+.stat-card { background:var(--card); border-radius:var(--radius); padding:16px; box-shadow:0 1px 3px rgba(0,0,0,.06); text-align:center; }
+.stat-card .stat-num { font-size:28px; font-weight:700; color: var(--primary); }
+.stat-card .stat-label { font-size:13px; color: var(--text-muted); margin-top:4px; }
+
+table { width:100%; border-collapse:collapse; font-size:14px; }
+th { text-align:left; padding:12px; background:#f8fafc; border-bottom:2px solid var(--border); font-weight:600; color: var(--text-muted); font-size:13px; }
+td { padding:10px 12px; border-bottom:1px solid var(--border); }
+tr:hover td { background:#f8fafc; }
+.search-bar { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; }
+.search-bar input, .search-bar select { max-width:200px; }
+
+/* === 二维码 === */
+.qrcode-container { display:flex; flex-direction:column; align-items:center; gap:12px; }
+#qrcode { padding:16px; background:#fff; border-radius:8px; border:1px solid var(--border); }
+
+/* === 配置区 === */
+.config-section { margin-bottom:24px; }
+.config-section h3 { font-size:16px; margin-bottom:12px; display:flex; align-items:center; gap:8px; }
+.config-section h3::before { content:""; width:4px; height:18px; background:var(--primary); border-radius:2px; display:inline-block; }
+
+/* === Modal === */
+.modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:200; justify-content:center; align-items:center; }
+.modal-overlay.show { display:flex; }
+.modal { background:var(--card); border-radius:var(--radius); padding:24px; max-width:500px; width:90%; max-height:80vh; overflow-y:auto; }
+.modal h2 { font-size:18px; margin-bottom:16px; }
+.modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:20px; }
+
+/* === Toast === */
+.toast { position:fixed; top:20px; left:50%; transform:translateX(-50%); padding:12px 24px; border-radius:8px; color:#fff; font-size:14px; font-weight:600; z-index:300; opacity:0; transition:opacity .3s; pointer-events:none; }
+.toast.show { opacity:1; }
+.toast-success { background: var(--success); }
+.toast-error { background: var(--danger); }
+.toast-info { background: var(--primary); }
+
+/* === 密码门 === */
+.auth-gate { display:flex; justify-content:center; align-items:center; min-height:60vh; }
+.auth-box { max-width:400px; width:90%; }
+.auth-box h2 { text-align:center; margin-bottom:20px; }
+
+/* === 空状态 === */
+.empty-state { text-align:center; padding:40px 20px; color: var(--text-muted); }
+.empty-state .icon { font-size:40px; margin-bottom:12px; }
+
+/* === 响应式 === */
+@media (max-width: 640px) {
+  .navbar { flex-direction:column; gap:8px; }
+  .navbar .nav-tabs { width:100%; justify-content:center; }
+  table { font-size:12px; }
+  th, td { padding:8px 6px; }
+  .material-row { flex-direction:column; }
+  .material-row select { max-width:100%; }
+}
+</style>
+</head>
+<body>
+
+<div class="navbar">
+  <h1>📋 考研复试材料收集系统</h1>
+  <div class="nav-tabs">
+    <button class="nav-tab active" data-page="student" onclick="switchPage('student')">学生上传</button>
+    <button class="nav-tab" data-page="admin" onclick="switchPage('admin')">管理后台</button>
+  </div>
+</div>
+
+<!-- ========== 学生端 ========== -->
+<div class="page active" id="page-student">
+  <div class="student-hero">
+    <h2>考研复试材料上传</h2>
+    <p>请按要求填写信息并上传相关材料，系统将自动统一命名</p>
+  </div>
+
+  <div class="card">
+    <!-- 学生信息表单 -->
+    <div class="form-group">
+      <label class="required">姓名</label>
+      <input type="text" id="stu-name" placeholder="请输入真实姓名" maxlength="20">
+    </div>
+    <div class="form-group">
+      <label class="required">准考证号 / 考号</label>
+      <input type="text" id="stu-examnum" placeholder="如：10012345" maxlength="20">
+    </div>
+    <div class="form-group">
+      <label class="required">报考专业 / 方向</label>
+      <input type="text" id="stu-major" placeholder="如：计算机科学与技术" maxlength="50">
+    </div>
+    <div class="form-group">
+      <label>手机号码</label>
+      <input type="tel" id="stu-phone" placeholder="便于必要时联系" maxlength="11">
+    </div>
+
+    <hr style="border:none; border-top:1px solid var(--border); margin:20px 0;">
+
+    <!-- 材料上传区 -->
+    <label class="required">上传材料</label>
+    <p style="font-size:13px; color:var(--text-muted); margin-bottom:12px;">请选择材料类型后上传文件，支持多份材料</p>
+
+    <div id="material-list">
+      <!-- 动态生成 -->
+    </div>
+
+    <button class="btn btn-outline btn-sm" onclick="addMaterialRow()" style="margin-top:8px;">+ 添加一份材料</button>
+
+    <hr style="border:none; border-top:1px solid var(--border); margin:20px 0;">
+
+    <button class="btn btn-primary" style="width:100%; padding:14px;" onclick="submitAll()" id="submit-btn">
+      提交全部材料
+    </button>
+  </div>
+
+  <div style="text-align:center; margin-top:16px; color:var(--text-muted); font-size:13px;">
+    材料提交后不可修改，请确认无误后再提交
+  </div>
+</div>
+
+<!-- ========== 管理端 ========== -->
+<div class="page" id="page-admin">
+  <!-- 密码门 -->
+  <div class="auth-gate" id="auth-gate">
+    <div class="auth-box card">
+      <h2>🔐 管理员登录</h2>
+      <div class="form-group">
+        <label>管理密码</label>
+        <input type="password" id="admin-password" placeholder="请输入管理密码" onkeydown="if(event.key==='Enter') adminLogin()">
+      </div>
+      <button class="btn btn-primary" style="width:100%;" onclick="adminLogin()">登录</button>
+      <p style="text-align:center; margin-top:12px; font-size:13px; color:var(--text-muted);">
+        首次使用请在配置中设置密码
+      </p>
+    </div>
+  </div>
+
+  <!-- 管理内容（登录后显示） -->
+  <div id="admin-content" style="display:none;">
+
+    <!-- 统计 -->
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-num" id="stat-total">0</div><div class="stat-label">总提交人数</div></div>
+      <div class="stat-card"><div class="stat-num" id="stat-materials">0</div><div class="stat-label">总材料份数</div></div>
+      <div class="stat-card"><div class="stat-num" id="stat-pending">0</div><div class="stat-label">待审核</div></div>
+      <div class="stat-card"><div class="stat-num" id="stat-approved">0</div><div class="stat-label">已通过</div></div>
+    </div>
+
+    <!-- 二维码区 -->
+    <div class="card" style="margin-bottom:20px;">
+      <h3 style="margin-bottom:12px;">📱 学生扫码入口</h3>
+      <div class="qrcode-container">
+        <div id="qrcode"></div>
+        <p style="font-size:13px; color:var(--text-muted);">学生扫描此二维码即可打开上传页面</p>
+        <div style="display:flex; gap:10px;">
+          <button class="btn btn-outline btn-sm" onclick="downloadQRCode()">下载二维码</button>
+          <button class="btn btn-outline btn-sm" onclick="copyStudentUrl()">复制链接</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 材料类型配置 -->
+    <div class="card" style="margin-bottom:20px;">
+      <div class="config-section">
+        <h3>📁 材料类型配置</h3>
+        <p style="font-size:13px; color:var(--text-muted); margin-bottom:12px;">配置学生可选的材料类型列表，修改后实时生效</p>
+        <div id="material-types-container">
+          <!-- 动态生成 -->
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="addMaterialType()" style="margin-top:8px;">+ 添加材料类型</button>
+      </div>
+    </div>
+
+    <!-- 搜索 + 数据表 -->
+    <div class="card">
+      <div class="admin-header">
+        <h3 style="margin:0;">📊 提交记录</h3>
+        <button class="btn btn-outline btn-sm" onclick="exportCSV()">导出CSV</button>
+      </div>
+
+      <div class="search-bar">
+        <input type="text" id="search-name" placeholder="搜索姓名..." oninput="renderTable()">
+        <input type="text" id="search-examnum" placeholder="搜索考号..." oninput="renderTable()">
+        <select id="filter-major" onchange="renderTable()">
+          <option value="">全部专业</option>
+        </select>
+        <select id="filter-status" onchange="renderTable()">
+          <option value="">全部状态</option>
+          <option value="pending">待审核</option>
+          <option value="approved">已通过</option>
+          <option value="rejected">已退回</option>
+        </select>
+      </div>
+
+      <div style="overflow-x:auto;">
+        <table id="data-table">
+          <thead>
+            <tr>
+              <th>姓名</th>
+              <th>考号</th>
+              <th>专业</th>
+              <th>手机</th>
+              <th>材料数</th>
+              <th>状态</th>
+              <th>提交时间</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="table-body">
+          </tbody>
+        </table>
+      </div>
+      <div class="empty-state" id="empty-state" style="display:none;">
+        <div class="icon">📭</div>
+        <p>暂无提交记录</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 详情 Modal ========== -->
+<div class="modal-overlay" id="detail-modal">
+  <div class="modal" style="max-width:600px;">
+    <h2>📋 提交详情</h2>
+    <div id="detail-content"></div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('detail-modal')">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- ========== 配置 Modal ========== -->
+<div class="modal-overlay" id="config-modal">
+  <div class="modal">
+    <h2>⚙️ 系统配置</h2>
+
+    <div class="config-section">
+      <h3>Supabase 连接</h3>
+      <div class="form-group">
+        <label>Project URL</label>
+        <input type="text" id="config-supabase-url" placeholder="https://xxx.supabase.co">
+      </div>
+      <div class="form-group">
+        <label>Anon Key</label>
+        <input type="text" id="config-supabase-key" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6...">
+      </div>
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">
+        在 <a href="https://supabase.com" target="_blank">supabase.com</a> 创建项目后，在 Settings → API 中获取
+      </p>
+    </div>
+
+    <div class="config-section">
+      <h3>管理密码</h3>
+      <div class="form-group">
+        <input type="text" id="config-admin-pass" placeholder="设置管理端访问密码" value="admin123">
+      </div>
+    </div>
+
+    <div class="config-section">
+      <h3>公网访问地址（用于二维码）</h3>
+      <div class="form-group">
+        <input type="text" id="config-public-url" placeholder="如：https://xxx.github.io/neepu-fushi/复试材料收集系统.html">
+        <p style="font-size:13px; color:var(--text-muted); margin-top:4px;">部署上线后填写此地址，二维码将指向它。留空则用当前页面地址。</p>
+      </div>
+    </div>
+
+    <div class="config-section">
+      <h3>材料类型预设</h3>
+      <div class="form-group">
+        <label>每行一个材料类型名称</label>
+        <textarea id="config-material-types" rows="6" placeholder="身份证扫描件&#10;本科成绩单&#10;个人简历&#10;学历学位证书&#10;科研成果证明">身份证扫描件
+本科成绩单
+个人简历
+学历学位证书
+科研成果证明
+政审表
+体检表</textarea>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeModal('config-modal')">取消</button>
+      <button class="btn btn-primary" onclick="saveConfig()">保存配置</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- 右上角配置按钮 -->
+<button onclick="openConfig()" style="position:fixed; bottom:20px; right:20px; width:48px; height:48px; border-radius:50%; background:var(--primary); color:#fff; border:none; font-size:20px; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,.2); z-index:50;" title="系统配置">⚙</button>
+
+<script>
+// ============================================
+// 全局状态
+// ============================================
+let supabaseClient = null;
+let CONFIG = {
+  supabaseUrl: '',
+  supabaseKey: '',
+  adminPass: 'admin123',
+  materialTypes: ['身份证扫描件','本科成绩单','个人简历','学历学位证书','科研成果证明','政审表','体检表']
+};
+
+// 本地暂存数据（无 Supabase 时的 fallback）
+let localData = [];
+let materialCounter = 0;
+
+// ============================================
+// 初始化
+// ============================================
+function init() {
+  loadConfig();
+  initSupabase();
+  generateQRCode();
+  if (CONFIG.supabaseUrl && CONFIG.supabaseKey) {
+    loadMaterialTypes();
+    loadData();
+  } else {
+    // 无 Supabase 时用本地数据
+    loadLocalData();
+  }
+  renderMaterialTypes();
+  addMaterialRow(); // 默认一行
+}
+
+function loadConfig() {
+  const saved = localStorage.getItem('fushi_config');
+  if (saved) {
+    CONFIG = { ...CONFIG, ...JSON.parse(saved) };
+  }
+  document.getElementById('config-supabase-url').value = CONFIG.supabaseUrl || '';
+  document.getElementById('config-supabase-key').value = CONFIG.supabaseKey || '';
+  document.getElementById('config-admin-pass').value = CONFIG.adminPass || 'admin123';
+  document.getElementById('config-public-url').value = CONFIG.publicUrl || '';
+  document.getElementById('config-material-types').value = (CONFIG.materialTypes || []).join('\n');
+}
+
+function saveConfig() {
+  CONFIG.supabaseUrl = document.getElementById('config-supabase-url').value.trim();
+  CONFIG.supabaseKey = document.getElementById('config-supabase-key').value.trim();
+  CONFIG.adminPass = document.getElementById('config-admin-pass').value.trim() || 'admin123';
+  CONFIG.publicUrl = document.getElementById('config-public-url').value.trim();
+  const typesText = document.getElementById('config-material-types').value.trim();
+  CONFIG.materialTypes = typesText ? typesText.split('\n').map(s => s.trim()).filter(s => s) : [];
+
+  localStorage.setItem('fushi_config', JSON.stringify(CONFIG));
+  initSupabase();
+  renderMaterialTypes();
+  renderMaterialTypeInputs();
+  generateQRCode();
+  closeModal('config-modal');
+  showToast('配置已保存', 'success');
+
+  if (CONFIG.supabaseUrl && CONFIG.supabaseKey) {
+    loadData();
+    loadMaterialTypes();
+  } else {
+    loadLocalData();
+  }
+}
+
+function initSupabase() {
+  if (CONFIG.supabaseUrl && CONFIG.supabaseKey && window.supabase) {
+    try {
+      let url = CONFIG.supabaseUrl.trim();
+      // 自动修正URL格式
+      if (url && !url.startsWith('http')) {
+        url = 'https://' + url;
+      }
+      // 去掉末尾斜杠
+      url = url.replace(/\/+$/, '');
+      // 去掉可能的路径后缀
+      url = url.replace(/\/rest\/v1.*$/, '');
+      url = url.replace(/\/auth\/v1.*$/, '');
+      url = url.replace(/\/storage\/v1.*$/, '');
+      CONFIG.supabaseUrl = url;
+      
+      console.log('Supabase URL:', url);
+      console.log('Supabase Key:', CONFIG.supabaseKey.substring(0, 20) + '...');
+      
+      supabaseClient = supabase.createClient(url, CONFIG.supabaseKey);
+      
+      // 测试连接
+      testSupabaseConnection();
+    } catch(e) {
+      console.error('Supabase init failed:', e);
+      supabaseClient = null;
+      showToast('Supabase初始化失败: ' + e.message, 'error');
+    }
+  }
+}
+
+async function testSupabaseConnection() {
+  if (!supabaseClient) return;
+  try {
+    const { data, error } = await supabaseClient.from('submissions').select('id').limit(1);
+    if (error) {
+      console.error('Supabase connection test failed:', error);
+      showToast('数据库连接失败: ' + error.message + ' (请检查URL和Key，以及是否已执行建表SQL)', 'error');
+    } else {
+      console.log('Supabase connected successfully');
+    }
+  } catch(e) {
+    console.error('Connection test error:', e);
+  }
+}
+
+// ============================================
+// 页面切换
+// ============================================
+function switchPage(page) {
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.querySelector(`[data-page="${page}"]`).classList.add('active');
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById(`page-${page}`).classList.add('active');
+
+  if (page === 'admin' && isAdminLoggedIn) {
+    loadData();
+  }
+}
+
+// ============================================
+// 学生端 - 材料上传
+// ============================================
+function addMaterialRow() {
+  materialCounter++;
+  const container = document.getElementById('material-list');
+  const div = document.createElement('div');
+  div.className = 'material-row';
+  div.id = `material-row-${materialCounter}`;
+
+  const typeSelect = document.createElement('select');
+  typeSelect.id = `material-type-${materialCounter}`;
+  typeSelect.style.maxWidth = '180px';
+  typeSelect.style.flexShrink = '0';
+
+  const types = CONFIG.materialTypes.length > 0 ? CONFIG.materialTypes : ['身份证扫描件','本科成绩单','个人简历','学历学位证书','科研成果证明','政审表','体检表'];
+  types.forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = t;
+    opt.textContent = t;
+    typeSelect.appendChild(opt);
+  });
+  // 允许自定义
+  const customOpt = document.createElement('option');
+  customOpt.value = '__custom__';
+  customOpt.textContent = '自定义...';
+  typeSelect.appendChild(customOpt);
+  typeSelect.onchange = function() {
+    if (this.value === '__custom__') {
+      const customInput = document.createElement('input');
+      customInput.type = 'text';
+      customInput.placeholder = '输入材料类型';
+      customInput.style.maxWidth = '120px';
+      customInput.dataset.isCustom = '1';
+      this.parentNode.replaceChild(customInput, this);
+    }
+  };
+
+  const uploadDiv = document.createElement('div');
+  uploadDiv.style.flex = '1';
+
+  const uploadArea = document.createElement('div');
+  uploadArea.className = 'upload-area';
+  uploadArea.style.padding = '16px';
+  uploadArea.innerHTML = `
+    <div style="font-size:13px; color:var(--text-muted);">点击或拖拽文件到这里</div>
+    <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">支持图片、PDF、Word等</div>
+  `;
+
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.style.display = 'none';
+  fileInput.accept = '.jpg,.jpeg,.png,.pdf,.doc,.docx,.xls,.xlsx,.zip,.rar';
+
+  const fileDisplay = document.createElement('div');
+  fileDisplay.className = 'file-list';
+
+  uploadArea.onclick = () => fileInput.click();
+
+  uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+  uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+  uploadArea.addEventListener('drop', (e) => {
+    e.preventDefault();
+    uploadArea.classList.remove('dragover');
+    handleFileSelect(e.dataTransfer.files, fileDisplay, fileInput);
+  });
+  fileInput.onchange = (e) => handleFileSelect(e.target.files, fileDisplay, fileInput);
+
+  uploadDiv.appendChild(uploadArea);
+  uploadDiv.appendChild(fileInput);
+  uploadDiv.appendChild(fileDisplay);
+
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'btn btn-outline btn-sm btn-danger';
+  removeBtn.textContent = '移除';
+  removeBtn.style.flexShrink = '0';
+  removeBtn.style.background = 'var(--danger)';
+  removeBtn.style.color = '#fff';
+  removeBtn.onclick = () => div.remove();
+
+  div.appendChild(typeSelect);
+  div.appendChild(uploadDiv);
+  div.appendChild(removeBtn);
+  container.appendChild(div);
+}
+
+function handleFileSelect(files, fileDisplay, fileInput) {
+  fileDisplay.innerHTML = '';
+  if (files.length === 0) return;
+
+  // 存储文件引用
+  fileInput._selectedFiles = Array.from(files);
+
+  Array.from(files).forEach((file, idx) => {
+    const item = document.createElement('div');
+    item.className = 'file-item';
+    const sizeKB = (file.size / 1024).toFixed(1);
+    const sizeStr = sizeKB > 1024 ? (sizeKB / 1024).toFixed(1) + 'MB' : sizeKB + 'KB';
+
+    item.innerHTML = `
+      <span class="file-name">📄 ${file.name} (${sizeStr})</span>
+    `;
+    const removeLink = document.createElement('span');
+    removeLink.className = 'file-remove';
+    removeLink.textContent = '✕';
+    removeLink.onclick = () => {
+      const newFiles = fileInput._selectedFiles.filter((_, i) => i !== idx);
+      fileInput._selectedFiles = newFiles;
+      item.remove();
+    };
+    item.appendChild(removeLink);
+    fileDisplay.appendChild(item);
+  });
+}
+
+// 统一文件命名
+function generateFileName(studentName, examNum, materialType, originalName) {
+  const ext = originalName.substring(originalName.lastIndexOf('.')) || '';
+  // 清理特殊字符
+  const cleanName = studentName.replace(/[/\\?%*:|"<>]/g, '');
+  const cleanExamNum = examNum.replace(/[/\\?%*:|"<>]/g, '');
+  const cleanType = materialType.replace(/[/\\?%*:|"<>]/g, '');
+  return `${cleanName}_${cleanExamNum}_${cleanType}${ext}`;
+}
+
+// 提交
+async function submitAll() {
+  const name = document.getElementById('stu-name').value.trim();
+  const examNum = document.getElementById('stu-examnum').value.trim();
+  const major = document.getElementById('stu-major').value.trim();
+  const phone = document.getElementById('stu-phone').value.trim();
+
+  if (!name) { showToast('请填写姓名', 'error'); return; }
+  if (!examNum) { showToast('请填写考号', 'error'); return; }
+  if (!major) { showToast('请填写报考专业', 'error'); return; }
+
+  // 收集所有材料
+  const rows = document.querySelectorAll('#material-list .material-row');
+  if (rows.length === 0) { showToast('请至少添加一份材料', 'error'); return; }
+
+  const materials = [];
+  let hasFile = false;
+  rows.forEach(row => {
+    const typeEl = row.querySelector('select, input[data-is-custom="1"]');
+    const materialType = typeEl ? typeEl.value.trim() : '未分类';
+    if (materialType === '__custom__' || !materialType) { return; }
+
+    const fileInput = row.querySelector('input[type="file"]');
+    const files = fileInput?._selectedFiles || [];
+    if (files.length === 0) return;
+
+    hasFile = true;
+    files.forEach(file => {
+      materials.push({
+        materialType,
+        file,
+        fileName: generateFileName(name, examNum, materialType, file.name)
+      });
+    });
+  });
+
+  if (!hasFile) { showToast('请至少上传一个文件', 'error'); return; }
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true;
+  btn.textContent = '提交中...';
+
+  try {
+    if (supabaseClient) {
+      await submitToSupabase(name, examNum, major, phone, materials);
+    } else {
+      await submitToLocal(name, examNum, major, phone, materials);
+    }
+
+    showToast('提交成功！材料已上传', 'success');
+    resetStudentForm();
+  } catch (err) {
+    console.error('Submit error:', err);
+    showToast('提交失败：' + err.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '提交全部材料';
+  }
+}
+
+async function submitToSupabase(name, examNum, major, phone, materials) {
+  // 1. 创建提交记录
+  const { data: subData, error: subError } = await supabaseClient
+    .from('submissions')
+    .insert([{ student_name: name, exam_number: examNum, major, phone, status: 'pending' }])
+    .select();
+
+  if (subError) throw new Error('创建提交记录失败: ' + subError.message);
+  const submissionId = subData[0].id;
+
+  // 2. 上传文件到 Storage
+  for (const mat of materials) {
+    const filePath = `${submissionId}/${mat.fileName}`;
+    const { error: uploadError } = await supabaseClient
+      .storage
+      .from('fushi-materials')
+      .upload(filePath, mat.file);
+
+    if (uploadError) throw new Error('文件上传失败: ' + uploadError.message);
+
+    // 获取公共 URL
+    const { data: urlData } = supabaseClient
+      .storage
+      .from('fushi-materials')
+      .getPublicUrl(filePath);
+
+    // 3. 保存材料记录
+    const { error: matError } = await supabaseClient
+      .from('materials')
+      .insert([{
+        submission_id: submissionId,
+        material_type: mat.materialType,
+        file_name: mat.fileName,
+        file_url: urlData.publicUrl,
+        file_path: filePath,
+        file_size: mat.file.size
+      }]);
+
+    if (matError) throw new Error('保存材料记录失败: ' + matError.message);
+  }
+}
+
+async function submitToLocal(name, examNum, major, phone, materials) {
+  // 本地模式：存文件引用信息（无法真正存储文件）
+  const submission = {
+    id: 'local_' + Date.now(),
+    student_name: name,
+    exam_number: examNum,
+    major,
+    phone,
+    status: 'pending',
+    created_at: new Date().toISOString(),
+    materials: materials.map(m => ({
+      material_type: m.materialType,
+      file_name: m.fileName,
+      file_size: m.file.size
+    }))
+  };
+  localData.unshift(submission);
+  localStorage.setItem('fushi_local_data', JSON.stringify(localData));
+}
+
+function resetStudentForm() {
+  document.getElementById('stu-name').value = '';
+  document.getElementById('stu-examnum').value = '';
+  document.getElementById('stu-major').value = '';
+  document.getElementById('stu-phone').value = '';
+  document.getElementById('material-list').innerHTML = '';
+  addMaterialRow();
+}
+
+// ============================================
+// 管理端
+// ============================================
+let isAdminLoggedIn = false;
+
+function adminLogin() {
+  const pass = document.getElementById('admin-password').value;
+  if (pass === CONFIG.adminPass) {
+    isAdminLoggedIn = true;
+    document.getElementById('auth-gate').style.display = 'none';
+    document.getElementById('admin-content').style.display = 'block';
+    loadData();
+  } else {
+    showToast('密码错误', 'error');
+  }
+}
+
+async function loadData() {
+  if (supabaseClient) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('submissions')
+        .select('*, materials(*)')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      localData = data || [];
+      updateStats();
+      renderTable();
+      updateMajorFilter();
+    } catch (err) {
+      showToast('加载数据失败: ' + err.message, 'error');
+    }
+  } else {
+    loadLocalData();
+  }
+}
+
+function loadLocalData() {
+  const saved = localStorage.getItem('fushi_local_data');
+  localData = saved ? JSON.parse(saved) : [];
+  updateStats();
+  renderTable();
+  updateMajorFilter();
+}
+
+function updateStats() {
+  document.getElementById('stat-total').textContent = localData.length;
+  let totalMat = 0, pending = 0, approved = 0;
+  localData.forEach(s => {
+    const mats = s.materials || [];
+    totalMat += mats.length;
+    if (s.status === 'pending') pending++;
+    if (s.status === 'approved') approved++;
+  });
+  document.getElementById('stat-materials').textContent = totalMat;
+  document.getElementById('stat-pending').textContent = pending;
+  document.getElementById('stat-approved').textContent = approved;
+}
+
+function updateMajorFilter() {
+  const majors = [...new Set(localData.map(s => s.major).filter(Boolean))];
+  const select = document.getElementById('filter-major');
+  const current = select.value;
+  select.innerHTML = '<option value="">全部专业</option>';
+  majors.forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = m;
+    opt.textContent = m;
+    select.appendChild(opt);
+  });
+  select.value = current;
+}
+
+function renderTable() {
+  const searchName = document.getElementById('search-name').value.toLowerCase();
+  const searchExam = document.getElementById('search-examnum').value.toLowerCase();
+  const filterMajor = document.getElementById('filter-major').value;
+  const filterStatus = document.getElementById('filter-status').value;
+
+  const filtered = localData.filter(s => {
+    if (searchName && !s.student_name.toLowerCase().includes(searchName)) return false;
+    if (searchExam && !s.exam_number.toLowerCase().includes(searchExam)) return false;
+    if (filterMajor && s.major !== filterMajor) return false;
+    if (filterStatus && s.status !== filterStatus) return false;
+    return true;
+  });
+
+  const tbody = document.getElementById('table-body');
+  tbody.innerHTML = '';
+
+  if (filtered.length === 0) {
+    document.getElementById('empty-state').style.display = 'block';
+    document.querySelector('#data-table').style.display = 'none';
+    return;
+  }
+  document.getElementById('empty-state').style.display = 'none';
+  document.querySelector('#data-table').style.display = '';
+
+  filtered.forEach(s => {
+    const tr = document.createElement('tr');
+    const matCount = (s.materials || []).length;
+    const statusBadge = getStatusBadge(s.status);
+    const time = new Date(s.created_at).toLocaleString('zh-CN');
+
+    tr.innerHTML = `
+      <td>${s.student_name}</td>
+      <td>${s.exam_number}</td>
+      <td>${s.major || '-'}</td>
+      <td>${s.phone || '-'}</td>
+      <td>${matCount}</td>
+      <td>${statusBadge}</td>
+      <td style="font-size:12px;">${time}</td>
+      <td>
+        <button class="btn btn-outline btn-sm" onclick="showDetail('${s.id}')">查看</button>
+        ${s.status === 'pending' ? `
+          <button class="btn btn-sm" style="background:var(--success);color:#fff;" onclick="updateStatus('${s.id}','approved')">通过</button>
+          <button class="btn btn-sm" style="background:var(--danger);color:#fff;" onclick="updateStatus('${s.id}','rejected')">退回</button>
+        ` : ''}
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function getStatusBadge(status) {
+  if (status === 'approved') return '<span class="badge badge-success">已通过</span>';
+  if (status === 'rejected') return '<span class="badge badge-danger">已退回</span>';
+  return '<span class="badge badge-pending">待审核</span>';
+}
+
+async function updateStatus(id, status) {
+  if (supabaseClient) {
+    const { error } = await supabaseClient
+      .from('submissions')
+      .update({ status })
+      .eq('id', id);
+    if (error) { showToast('更新失败: ' + error.message, 'error'); return; }
+  } else {
+    const item = localData.find(s => s.id === id);
+    if (item) item.status = status;
+    localStorage.setItem('fushi_local_data', JSON.stringify(localData));
+  }
+  showToast('状态已更新', 'success');
+  loadData();
+}
+
+function showDetail(id) {
+  const sub = localData.find(s => s.id === id);
+  if (!sub) return;
+
+  const materials = sub.materials || [];
+  let matHtml = '';
+  if (materials.length === 0) {
+    matHtml = '<p style="color:var(--text-muted);">无材料记录</p>';
+  } else {
+    matHtml = '<div style="margin-top:8px;">';
+    materials.forEach((m, idx) => {
+      const sizeKB = m.file_size ? (m.file_size / 1024).toFixed(1) + 'KB' : '';
+      // 下载按钮（兼容公有/私有桶，且文件名含中文也能下载）
+      const downloadBtn = supabaseClient
+        ? `<button class="btn btn-outline btn-sm" onclick="downloadMaterial('${sub.id}','${idx}')">下载</button>`
+        : (m.file_url ? `<a href="${m.file_url}" target="_blank" style="color:var(--primary);">下载</a>` : '<span style="color:var(--text-muted);font-size:12px;">(本地模式)</span>');
+      matHtml += `
+        <div class="file-item">
+          <span class="file-name">📄 ${m.file_name || m.material_type} ${sizeKB ? '(' + sizeKB + ')' : ''}</span>
+          <span style="margin-left:8px; font-size:12px; color:var(--text-muted);">${m.material_type}</span>
+          <span style="margin-left:8px;">${downloadBtn}</span>
+        </div>
+      `;
+    });
+    matHtml += '</div>';
+  }
+
+  document.getElementById('detail-content').innerHTML = `
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px;">
+      <div><label style="font-size:12px;color:var(--text-muted);">姓名</label><div style="font-weight:600;">${sub.student_name}</div></div>
+      <div><label style="font-size:12px;color:var(--text-muted);">考号</label><div style="font-weight:600;">${sub.exam_number}</div></div>
+      <div><label style="font-size:12px;color:var(--text-muted);">专业</label><div style="font-weight:600;">${sub.major || '-'}</div></div>
+      <div><label style="font-size:12px;color:var(--text-muted);">手机</label><div style="font-weight:600;">${sub.phone || '-'}</div></div>
+      <div><label style="font-size:12px;color:var(--text-muted);">状态</label><div>${getStatusBadge(sub.status)}</div></div>
+      <div><label style="font-size:12px;color:var(--text-muted);">提交时间</label><div style="font-size:13px;">${new Date(sub.created_at).toLocaleString('zh-CN')}</div></div>
+    </div>
+    <hr style="border:none;border-top:1px solid var(--border);margin:12px 0;">
+    <label style="margin-bottom:8px;">材料列表 (${materials.length})</label>
+    ${matHtml}
+  `;
+  document.getElementById('detail-modal').classList.add('show');
+}
+
+// ============================================
+// 文件下载（兼容中文文件名 + 私有/公有桶）
+// ============================================
+async function downloadMaterial(submissionId, materialIdx) {
+  const sub = localData.find(s => s.id === submissionId);
+  if (!sub) return;
+  const materials = sub.materials || [];
+  const m = materials[materialIdx];
+  if (!m) return;
+
+  if (!supabaseClient) {
+    showToast('当前为本地模式，无法下载云端文件', 'error');
+    return;
+  }
+
+  // 提示正在下载
+  showToast('正在下载...', 'info');
+
+  try {
+    // 方式1：优先用 signed URL（对公有/私有桶都有效）
+    const filePath = m.file_path || `${submissionId}/${m.file_name}`;
+    try {
+      const { data: signedData, error: signedError } = await supabaseClient
+        .storage
+        .from('fushi-materials')
+        .createSignedUrl(filePath, 3600);
+      if (!signedError && signedData && signedData.signedUrl) {
+        // 用隐藏iframe触发下载，避免打开新页
+        window.open(signedData.signedUrl, '_blank');
+        showToast('已开始下载', 'success');
+        return;
+      }
+    } catch (e) { /* 继续尝试方式2 */ }
+
+    // 方式2：通过客户端下载再保存（处理中文文件名）
+    const { data, error } = await supabaseClient.storage.from('fushi-materials').download(filePath);
+    if (error) throw error;
+
+    const blob = new Blob([data], { type: data.type || 'application/octet-stream' });
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = m.file_name || 'download';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 3000);
+    showToast('下载成功', 'success');
+  } catch (e) {
+    console.error('Download error:', e);
+    showToast('下载失败: ' + e.message + '（请检查存储桶是否允许下载）', 'error');
+  }
+}
+
+// ============================================
+// 材料类型管理
+// ============================================
+function renderMaterialTypes() {
+  // 更新学生端下拉选项
+  renderMaterialTypeInputs();
+}
+
+function renderMaterialTypeInputs() {
+  const container = document.getElementById('material-types-container');
+  if (!container) return;
+  container.innerHTML = '';
+
+  const types = CONFIG.materialTypes.length > 0 ? CONFIG.materialTypes : ['身份证扫描件','本科成绩单','个人简历','学历学位证书','科研成果证明','政审表','体检表'];
+  types.forEach((type, idx) => {
+    const div = document.createElement('div');
+    div.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px;';
+    div.innerHTML = `
+      <input type="text" value="${type}" style="flex:1;" data-idx="${idx}" onchange="updateMaterialType(${idx}, this.value)">
+      <button class="btn btn-sm" style="background:var(--danger);color:#fff;padding:6px 10px;" onclick="removeMaterialType(${idx})">删除</button>
+    `;
+    container.appendChild(div);
+  });
+}
+
+function addMaterialType() {
+  const types = CONFIG.materialTypes.length > 0 ? CONFIG.materialTypes : ['身份证扫描件','本科成绩单','个人简历','学历学位证书','科研成果证明','政审表','体检表'];
+  types.push('新材料类型');
+  CONFIG.materialTypes = types;
+  localStorage.setItem('fushi_config', JSON.stringify(CONFIG));
+  renderMaterialTypeInputs();
+}
+
+function removeMaterialType(idx) {
+  const types = CONFIG.materialTypes.length > 0 ? CONFIG.materialTypes : ['身份证扫描件','本科成绩单','个人简历','学历学位证书','科研成果证明','政审表','体检表'];
+  types.splice(idx, 1);
+  CONFIG.materialTypes = types;
+  localStorage.setItem('fushi_config', JSON.stringify(CONFIG));
+  renderMaterialTypeInputs();
+}
+
+function updateMaterialType(idx, value) {
+  const types = CONFIG.materialTypes.length > 0 ? CONFIG.materialTypes : ['身份证扫描件','本科成绩单','个人简历','学历学位证书','科研成果证明','政审表','体检表'];
+  types[idx] = value;
+  CONFIG.materialTypes = types;
+  localStorage.setItem('fushi_config', JSON.stringify(CONFIG));
+}
+
+async function loadMaterialTypes() {
+  // 从 Supabase 加载材料类型（如果 material_types 表有数据）
+  if (!supabaseClient) return;
+  try {
+    const { data, error } = await supabaseClient.from('material_types').select('*').order('name');
+    if (!error && data && data.length > 0) {
+      CONFIG.materialTypes = data.map(d => d.name);
+      renderMaterialTypeInputs();
+    }
+  } catch(e) { /* 表可能不存在，忽略 */ }
+}
+
+// ============================================
+// 二维码
+// ============================================
+function generateQRCode() {
+  const container = document.getElementById('qrcode');
+  if (!container) return;
+  container.innerHTML = '';
+  
+  // 优先使用配置的公开URL，否则用当前页面地址
+  let url = CONFIG.publicUrl || window.location.href.split('#')[0];
+  
+  // 如果是本地文件地址，显示警告
+  if (url.startsWith('file:///')) {
+    container.innerHTML = `
+      <div style="text-align:center; padding:20px;">
+        <div style="font-size:48px; margin-bottom:8px;">⚠️</div>
+        <p style="color:var(--danger); font-weight:600; margin-bottom:8px;">当前是本地地址，手机扫码无法打开</p>
+        <p style="color:var(--text-muted); font-size:13px; margin-bottom:12px;">请在配置中填写公网URL<br>（部署上线后的网址）</p>
+        <button class="btn btn-outline btn-sm" onclick="openConfig()">去配置</button>
+      </div>
+    `;
+    return;
+  }
+  
+  try {
+    new QRCode(container, {
+      text: url,
+      width: 200,
+      height: 200,
+      colorDark: '#1e293b',
+      colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel.M
+    });
+  } catch(e) {
+    container.innerHTML = `<p style="color:var(--text-muted);font-size:13px;">二维码生成失败<br>请手动复制链接：${url}</p>`;
+  }
+}
+
+function downloadQRCode() {
+  const canvas = document.querySelector('#qrcode canvas');
+  if (!canvas) { showToast('二维码未生成', 'error'); return; }
+  const link = document.createElement('a');
+  link.download = '考研复试材料上传二维码.png';
+  link.href = canvas.toDataURL();
+  link.click();
+  showToast('二维码已下载', 'success');
+}
+
+function copyStudentUrl() {
+  const url = CONFIG.publicUrl || window.location.href.split('#')[0];
+  navigator.clipboard.writeText(url).then(() => {
+    showToast('链接已复制', 'success');
+  }).catch(() => {
+    // fallback
+    const input = document.createElement('input');
+    input.value = url;
+    document.body.appendChild(input);
+    input.select();
+    document.execCommand('copy');
+    document.body.removeChild(input);
+    showToast('链接已复制', 'success');
+  });
+}
+
+// ============================================
+// 导出 CSV
+// ============================================
+function exportCSV() {
+  if (localData.length === 0) { showToast('暂无数据可导出', 'error'); return; }
+
+  let csv = '\uFEFF姓名,考号,专业,手机,材料类型,文件名,状态,提交时间\n';
+  localData.forEach(s => {
+    const materials = s.materials || [];
+    const statusMap = { pending: '待审核', approved: '已通过', rejected: '已退回' };
+    const time = new Date(s.created_at).toLocaleString('zh-CN');
+
+    if (materials.length === 0) {
+      csv += `${s.student_name},${s.exam_number},${s.major || ''},${s.phone || ''},,,${statusMap[s.status] || s.status},${time}\n`;
+    } else {
+      materials.forEach(m => {
+        csv += `${s.student_name},${s.exam_number},${s.major || ''},${s.phone || ''},${m.material_type},${m.file_name || ''},${statusMap[s.status] || s.status},${time}\n`;
+      });
+    }
+  });
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `复试材料汇总_${new Date().toISOString().slice(0,10)}.csv`;
+  link.click();
+  showToast('CSV已导出', 'success');
+}
+
+// ============================================
+// 通用工具
+// ============================================
+function showToast(msg, type) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.className = `toast toast-${type} show`;
+  setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+function openConfig() {
+  document.getElementById('config-modal').classList.add('show');
+}
+
+function closeModal(id) {
+  document.getElementById(id).classList.remove('show');
+}
+
+// 点击 Modal 外层关闭
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) overlay.classList.remove('show');
+  });
+});
+
+// 启动
+init();
+</script>
+</body>
+</html>
