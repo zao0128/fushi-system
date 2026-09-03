@@ -253,7 +253,11 @@ tr:hover td { background:#f8fafc; }
     <div class="card">
       <div class="admin-header">
         <h3 style="margin:0;">📊 提交记录</h3>
-        <button class="btn btn-outline btn-sm" onclick="exportCSV()">导出CSV</button>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-outline btn-sm" onclick="loadData()">🔄 刷新数据</button>
+          <button class="btn btn-outline btn-sm" onclick="exportCSV()">导出CSV</button>
+          <button class="btn btn-sm" style="background:var(--danger);color:#fff;" onclick="clearAllData()">🗑️ 清空全部数据</button>
+        </div>
       </div>
 
       <div class="search-bar">
@@ -909,6 +913,59 @@ function getStatusBadge(status) {
   if (status === 'approved') return '<span class="badge badge-success">已通过</span>';
   if (status === 'rejected') return '<span class="badge badge-danger">已退回</span>';
   return '<span class="badge badge-pending">待审核</span>';
+}
+
+// 清空全部数据（提交记录 + 材料记录 + 存储桶文件）
+async function clearAllData() {
+  if (localData.length === 0) {
+    showToast('当前没有数据可清空', 'info');
+    return;
+  }
+  // 检查是否还有待审核记录
+  const pending = localData.filter(s => s.status === 'pending');
+  if (pending.length > 0) {
+    showToast('还有 ' + pending.length + ' 条待审核记录，请先全部处理完再清空', 'error');
+    return;
+  }
+  // 二次确认
+  if (!confirm('确认清空全部数据？\n\n这将删除所有提交记录、材料记录和已上传的文件。\n此操作不可撤销！\n\n建议先导出CSV备份后再清空。')) return;
+  if (!confirm('再次确认：真的要删除全部数据吗？此操作不可恢复！')) return;
+
+  try {
+    if (supabaseClient) {
+      // 1. 先删除存储桶中的文件
+      const allPaths = [];
+      localData.forEach(s => {
+        (s.materials || []).forEach(m => {
+          if (m.file_path) allPaths.push(m.file_path);
+        });
+      });
+      if (allPaths.length > 0) {
+        const { error: delFileError } = await supabaseClient
+          .storage.from('fushi-materials').remove(allPaths);
+        if (delFileError) console.warn('文件删除警告:', delFileError.message);
+      }
+      // 2. 删除材料记录
+      const { error: matDelError } = await supabaseClient
+        .from('materials').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      if (matDelError) throw new Error('删除材料记录失败: ' + matDelError.message);
+      // 3. 删除提交记录
+      const { error: subDelError } = await supabaseClient
+        .from('submissions').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      if (subDelError) throw new Error('删除提交记录失败: ' + subDelError.message);
+    } else {
+      // 本地模式：清空 localStorage
+      localStorage.removeItem('fushi_local_data');
+    }
+    localData = [];
+    updateStats();
+    renderTable();
+    updateMajorFilter();
+    showToast('全部数据已清空', 'success');
+  } catch (err) {
+    showToast('清空失败: ' + err.message, 'error');
+    console.error('Clear error:', err);
+  }
 }
 
 async function updateStatus(id, status) {
