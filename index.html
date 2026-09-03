@@ -256,7 +256,7 @@ tr:hover td { background:#f8fafc; }
         <div style="display:flex; gap:8px;">
           <button class="btn btn-outline btn-sm" onclick="loadData()">🔄 刷新数据</button>
           <button class="btn btn-outline btn-sm" onclick="exportCSV()">导出CSV</button>
-          <button class="btn btn-sm" style="background:var(--danger);color:#fff;" onclick="clearAllData()">🗑️ 清空全部数据</button>
+          <button id="clear-data-btn" class="btn btn-sm" style="background:var(--danger);color:#fff;" onclick="clearAllData()">🗑️ 清空全部数据</button>
         </div>
       </div>
 
@@ -500,8 +500,16 @@ function switchPage(page) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById(`page-${page}`).classList.add('active');
 
-  if (page === 'admin' && isAdminLoggedIn) {
-    loadData();
+  if (page === 'admin') {
+    // 每次进入管理后台都检查登录状态
+    if (isAdminLoggedIn) {
+      document.getElementById('auth-gate').style.display = 'none';
+      document.getElementById('admin-content').style.display = 'block';
+      loadData();
+    } else {
+      document.getElementById('auth-gate').style.display = 'block';
+      document.getElementById('admin-content').style.display = 'none';
+    }
   }
 }
 
@@ -931,41 +939,92 @@ async function clearAllData() {
   if (!confirm('确认清空全部数据？\n\n这将删除所有提交记录、材料记录和已上传的文件。\n此操作不可撤销！\n\n建议先导出CSV备份后再清空。')) return;
   if (!confirm('再次确认：真的要删除全部数据吗？此操作不可恢复！')) return;
 
+  const btn = document.getElementById('clear-data-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '清空中...'; }
+
   try {
-    if (supabaseClient) {
-      // 1. 先删除存储桶中的文件
-      const allPaths = [];
-      localData.forEach(s => {
-        (s.materials || []).forEach(m => {
-          if (m.file_path) allPaths.push(m.file_path);
-        });
-      });
-      if (allPaths.length > 0) {
-        const { error: delFileError } = await supabaseClient
-          .storage.from('fushi-materials').remove(allPaths);
-        if (delFileError) console.warn('文件删除警告:', delFileError.message);
+    // ===== 云端删除（优先）：即使 supabaseClient 为 null（CDN被拦截），也尝试用 REST API 直删 =====
+    let cloudDeleted = false;
+    if (CONFIG.supabaseUrl && CONFIG.supabaseKey) {
+      try {
+        cloudDeleted = await clearCloudData();
+      } catch (e) {
+        console.error('云端删除失败:', e);
+        cloudDeleted = false;
       }
-      // 2. 删除材料记录
-      const { error: matDelError } = await supabaseClient
-        .from('materials').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      if (matDelError) throw new Error('删除材料记录失败: ' + matDelError.message);
-      // 3. 删除提交记录
-      const { error: subDelError } = await supabaseClient
-        .from('submissions').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-      if (subDelError) throw new Error('删除提交记录失败: ' + subDelError.message);
-    } else {
-      // 本地模式：清空 localStorage
-      localStorage.removeItem('fushi_local_data');
     }
+
+    // ===== 本地清理 =====
+    localStorage.removeItem('fushi_local_data');
     localData = [];
-    updateStats();
-    renderTable();
-    updateMajorFilter();
-    showToast('全部数据已清空', 'success');
+
+    if (cloudDeleted) {
+      updateStats();
+      renderTable();
+      updateMajorFilter();
+      showToast('全部数据已清空（云端+本地）', 'success');
+    } else if (supabaseClient) {
+      // supabaseClient 可用但删除失败
+      showToast('云端删除未完全成功，请检查网络后重试', 'error');
+    } else {
+      // 无 supabaseClient，且云端删除失败（CDN被拦+网络不通）
+      updateStats();
+      renderTable();
+      updateMajorFilter();
+      showToast('已清空本地显示数据；云端数据可能未删，建议用线上网址 https://' + (CONFIG.publicUrl || '').replace('https://','').replace(/\/$/,'') + ' 打开再清空一次', 'error');
+    }
   } catch (err) {
     showToast('清空失败: ' + err.message, 'error');
     console.error('Clear error:', err);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🗑️ 清空全部数据'; }
   }
+}
+
+// 用 REST API 直接删除云端数据（不依赖 supabase-js CDN）
+async function clearCloudData() {
+  const url = CONFIG.supabaseUrl.replace(/\/+$/, '');
+  const headers = {
+    'apikey': CONFIG.supabaseKey,
+    'Authorization': 'Bearer ' + CONFIG.supabaseKey,
+    'Prefer': 'return=minimal'
+  };
+
+  // 1. 收集所有文件路径（从当前加载的数据）
+  const allPaths = [];
+  localData.forEach(s => {
+    (s.materials || []).forEach(m => {
+      if (m.file_path) allPaths.push(m.file_path);
+    });
+  });
+
+  // 2. 删除存储桶文件（REST API: /storage/v1/object/{bucket}）
+  if (allPaths.length > 0) {
+    try {
+      const fileResp = await fetch(url + '/storage/v1/object/fushi-materials', {
+        method: 'DELETE',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prefixes: allPaths })
+      });
+      if (!fileResp.ok && fileResp.status !== 200) console.warn('存储文件删除警告: ' + fileResp.status);
+    } catch (e) { console.warn('存储文件删除失败(可忽略):', e.message); }
+  }
+
+  // 3. 删除材料记录
+  const matResp = await fetch(url + '/rest/v1/materials?id=neq.00000000-0000-0000-0000-000000000000', {
+    method: 'DELETE',
+    headers
+  });
+  if (!matResp.ok && matResp.status !== 204) throw new Error('删除材料记录失败: HTTP ' + matResp.status);
+
+  // 4. 删除提交记录
+  const subResp = await fetch(url + '/rest/v1/submissions?id=neq.00000000-0000-0000-0000-000000000000', {
+    method: 'DELETE',
+    headers
+  });
+  if (!subResp.ok && subResp.status !== 204) throw new Error('删除提交记录失败: HTTP ' + subResp.status);
+
+  return true;
 }
 
 async function updateStatus(id, status) {
