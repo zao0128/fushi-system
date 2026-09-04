@@ -818,6 +818,8 @@ async function loadData() {
         .order('created_at', { ascending: false });
       if (error) throw error;
       localData = data || [];
+      // 云端数据联动覆盖本地缓存：云端删了缓存也同步；云端为空则清空缓存
+      localStorage.setItem('fushi_local_data', JSON.stringify(localData));
       updateStats();
       renderTable();
       updateMajorFilter();
