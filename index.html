@@ -989,7 +989,7 @@ async function clearCloudData() {
   const headers = {
     'apikey': CONFIG.supabaseKey,
     'Authorization': 'Bearer ' + CONFIG.supabaseKey,
-    'Prefer': 'return=minimal'
+    'Prefer': 'return=representation'  // 返回被删除的记录，用于校验是否真的删掉
   };
 
   // 1. 收集所有文件路径（从当前加载的数据）
@@ -1017,14 +1017,23 @@ async function clearCloudData() {
     method: 'DELETE',
     headers
   });
-  if (!matResp.ok && matResp.status !== 204) throw new Error('删除材料记录失败: HTTP ' + matResp.status);
+  if (matResp.status === 401 || matResp.status === 403) throw new Error('删除材料记录被拒绝(HTTP ' + matResp.status + ')，可能是数据库权限未配置');
+  if (!matResp.ok && matResp.status !== 204 && matResp.status !== 200) throw new Error('删除材料记录失败: HTTP ' + matResp.status);
+  const matBody = matResp.status === 200 ? await matResp.json() : [];
 
   // 4. 删除提交记录
   const subResp = await fetch(url + '/rest/v1/submissions?id=neq.00000000-0000-0000-0000-000000000000', {
     method: 'DELETE',
     headers
   });
-  if (!subResp.ok && subResp.status !== 204) throw new Error('删除提交记录失败: HTTP ' + subResp.status);
+  if (subResp.status === 401 || subResp.status === 403) throw new Error('删除提交记录被拒绝(HTTP ' + subResp.status + ')，可能是数据库权限未配置权限');
+  if (!subResp.ok && subResp.status !== 204 && subResp.status !== 200) throw new Error('删除提交记录失败: HTTP ' + subResp.status);
+  const subBody = subResp.status === 200 ? await subResp.json() : [];
+
+  // 5. 校验：明明有数据却返回 0 行删除 → RLS 策略拦截
+  if (localData.length > 0 && subBody.length === 0 && matBody.length === 0) {
+    throw new Error('云端删除被数据库权限(RLS)拦截，请在 Supabase 控制台 SQL Editor 执行修复 SQL 后重试');
+  }
 
   return true;
 }
